@@ -489,9 +489,6 @@ function App() {
           </div>
         )}
       </div>
-      <footer className="app-footer">
-        GabbyDev 2025
-      </footer>
     </div>
   );
 }
