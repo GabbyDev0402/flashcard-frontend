@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, RotateCcw, CheckCircle, XCircle, Clock, Target, TrendingUp } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle, XCircle, Clock, Target, TrendingUp, Settings } from 'lucide-react';
 import './App.css';
 
 const BASE_API_URL = import.meta.env.VITE_BASE_API_URL || 'http://localhost:5000/api/cards';
 
 function App() {
   // Main app state
-  const [view, setView] = useState('home'); // 'home', 'study', 'complete'
+  const [view, setView] = useState('home'); // 'home', 'study', 'complete', 'setup'
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Study session setup state
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [cardLimit, setCardLimit] = useState(20);
+  const [availableCards, setAvailableCards] = useState([]);
 
   // Study session state
   const [currentSubject, setCurrentSubject] = useState('');
@@ -85,7 +90,7 @@ function App() {
     }
   };
 
-  const startStudySession = async (subject) => {
+  const setupStudySession = async (subject) => {
     const subjectCards = await fetchCardsBySubject(subject);
     
     if (subjectCards.length === 0) {
@@ -93,12 +98,25 @@ function App() {
       return;
     }
 
-    setCurrentSubject(subject);
-    setCards(subjectCards);
+    setSelectedSubject(subject);
+    setAvailableCards(subjectCards);
+    setCardLimit(Math.min(20, subjectCards.length)); // Default to 20 or max available
+    setView('setup');
+  };
+
+  const startStudySession = () => {
+    if (availableCards.length === 0) return;
+
+    // Shuffle cards and take the specified limit
+    const shuffledCards = [...availableCards].sort(() => Math.random() - 0.5);
+    const sessionCards = shuffledCards.slice(0, cardLimit);
+
+    setCurrentSubject(selectedSubject);
+    setCards(sessionCards);
     setCurrentCardIndex(0);
     setSelectedChoice('');
     setShowResult(false);
-    setSessionStats({ correct: 0, incorrect: 0, total: subjectCards.length });
+    setSessionStats({ correct: 0, incorrect: 0, total: sessionCards.length });
     setAgainCards([]);
     setView('study');
   };
@@ -153,23 +171,36 @@ function App() {
   };
 
   const restartSession = () => {
-    startStudySession(currentSubject);
+    startStudySession();
   };
 
   const goHome = () => {
     setView('home');
     setCurrentSubject('');
+    setSelectedSubject('');
     setCards([]);
+    setAvailableCards([]);
     setCurrentCardIndex(0);
     setSelectedChoice('');
     setShowResult(false);
     setSessionStats({ correct: 0, incorrect: 0, total: 0 });
     setAgainCards([]);
+    setCardLimit(20);
     // Refresh subject counts
     fetchAllCards();
   };
 
+  const goBackToHome = () => {
+    setView('home');
+    setSelectedSubject('');
+    setAvailableCards([]);
+    setCardLimit(20);
+  };
+
   const currentCard = cards[currentCardIndex];
+
+  // Common limit options
+  const limitOptions = [5, 10, 15, 20, 25, 30, 50];
 
   // Loading state
   if (loading && view === 'home') {
@@ -245,7 +276,7 @@ function App() {
                   <button
                     key={subject.name}
                     className="subject-card"
-                    onClick={() => startStudySession(subject.name)}
+                    onClick={() => setupStudySession(subject.name)}
                   >
                     <h3>{subject.name}</h3>
                     <p className="card-count">{subject.count} cards</p>
@@ -254,6 +285,92 @@ function App() {
               </div>
             )}
           </>
+        )}
+
+        {view === 'setup' && (
+          <div className="study-setup">
+            <div className="setup-header">
+              <button className="back-button" onClick={goBackToHome}>
+                <ArrowLeft size={20} />
+                Back to Subjects
+              </button>
+              <div className="setup-title">
+                <Settings size={24} />
+                <h2>Setup Study Session</h2>
+              </div>
+            </div>
+
+            <div className="setup-content">
+              <div className="setup-section">
+                <h3>Subject</h3>
+                <div className="selected-subject">
+                  <div className="subject-info">
+                    <h4>{selectedSubject}</h4>
+                    <p>{availableCards.length} cards available</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="setup-section">
+                <h3>Number of Cards to Study</h3>
+                <div className="limit-options">
+                  {limitOptions
+                    .filter(option => option <= availableCards.length)
+                    .map(option => (
+                      <button
+                        key={option}
+                        className={`limit-option ${cardLimit === option ? 'selected' : ''}`}
+                        onClick={() => setCardLimit(option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  {!limitOptions.includes(availableCards.length) && availableCards.length <= 100 && (
+                    <button
+                      className={`limit-option ${cardLimit === availableCards.length ? 'selected' : ''}`}
+                      onClick={() => setCardLimit(availableCards.length)}
+                    >
+                      All ({availableCards.length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="custom-limit">
+                  <label>
+                    Custom limit:
+                    <input
+                      type="number"
+                      min="1"
+                      max={availableCards.length}
+                      value={cardLimit}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1;
+                        setCardLimit(Math.min(Math.max(value, 1), availableCards.length));
+                      }}
+                      className="custom-limit-input"
+                    />
+                  </label>
+                  <span className="limit-info">Max: {availableCards.length}</span>
+                </div>
+              </div>
+
+              <div className="setup-summary">
+                <div className="summary-card">
+                  <h4>Session Summary</h4>
+                  <p><strong>Subject:</strong> {selectedSubject}</p>
+                  <p><strong>Cards to study:</strong> {cardLimit} out of {availableCards.length}</p>
+                  <p><strong>Estimated time:</strong> ~{Math.ceil(cardLimit * 0.5)} minutes</p>
+                </div>
+              </div>
+
+              <div className="setup-actions">
+                <button className="btn btn-primary btn-large" onClick={startStudySession}>
+                  <Target size={20} />
+                  Start Study Session
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {view === 'study' && currentCard && (
